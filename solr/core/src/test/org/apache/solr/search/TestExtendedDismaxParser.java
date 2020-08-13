@@ -1083,18 +1083,35 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
         ExtendedDismaxQParser parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
         List<ExtendedDismaxQParser.Clause> clauses = parser.splitIntoClauses(query, false);
         Assert.assertEquals(3, clauses.size());
-        Assert.assertEquals("\\(", clauses.get(0).val);
-        Assert.assertFalse(clauses.get(0).hasWhitespace);
-        Assert.assertTrue(clauses.get(0).hasSpecialSyntax);
+        assertClause(clauses.get(0), "\\(", false, true);
+        assertClause(clauses.get(1), "foo\nfoo", true, false);
+        assertClause(clauses.get(2), "\\)", false, true);
 
-        Assert.assertEquals("foo\nfoo", clauses.get(1).val);
-        Assert.assertTrue(clauses.get(1).hasWhitespace);
-        Assert.assertFalse(clauses.get(1).hasSpecialSyntax);
+        query = "cat_s:[\"foo\nfoo\" TO \"foo\nfoo\"]";
+        request = req("q", query,
+                "qf", "cat_s",
+                "defType", "edismax");
+        parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
+        clauses = parser.splitIntoClauses(query, false);
+        Assert.assertEquals(5, clauses.size());
+        assertClause(clauses.get(0), "\\[", false, true, "cat_s");
+        assertClause(clauses.get(1), "foo\nfoo", true, false);
+        assertClause(clauses.get(2), "TO", true, false);
+        assertClause(clauses.get(3), "foo\nfoo", true, false);
+        assertClause(clauses.get(4), "\\]", false, true);
 
-        Assert.assertEquals("\\)", clauses.get(2).val);
-        Assert.assertFalse(clauses.get(2).hasWhitespace);
-        Assert.assertTrue(clauses.get(2).hasSpecialSyntax);
-
+        query = "cat_s:[ \"foo\nfoo\" TO \"foo\nfoo\"]";
+        request = req("q", query,
+                "qf", "cat_s",
+                "defType", "edismax");
+        parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
+        clauses = parser.splitIntoClauses(query, false);
+        Assert.assertEquals(5, clauses.size());
+        assertClause(clauses.get(0), "\\[", true, true, "cat_s");
+        assertClause(clauses.get(1), "foo\nfoo", true, false);
+        assertClause(clauses.get(2), "TO", true, false);
+        assertClause(clauses.get(3), "foo\nfoo", true, false);
+        assertClause(clauses.get(4), "\\]", false, true);
 
         String allReservedCharacters = "!():^[]{}~*?\"+-\\|&/";
         // the backslash needs to be manually escaped (the query parser sees the raw backslash as an escape the subsequent
@@ -1109,12 +1126,35 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
         parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
         clauses = parser.splitIntoClauses(query, false);
         Assert.assertEquals(1, clauses.size());
-        Assert.assertEquals("\\!\\(\\)\\:\\^\\[\\]\\{\\}\\~\\*\\?\\\"\\+\\-\\\\\\|\\&\\/", clauses.get(0).val);
+        assertClause(clauses.get(0), "\\!\\(\\)\\:\\^\\[\\]\\{\\}\\~\\*\\?\\\"\\+\\-\\\\\\|\\&\\/", false, true);
 
+        query = "foo/";
+        request = req("q", query,
+                "qf", "name",
+                "mm", "100%",
+                "defType", "edismax");
+
+        parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
+        clauses = parser.splitIntoClauses(query, false);
+        Assert.assertEquals(1, clauses.size());
+        assertClause(clauses.get(0), "foo\\/", false, true);
+    }
+
+    private static void assertClause(ExtendedDismaxQParser.Clause clause, String value, boolean hasWhitespace,
+                                     boolean hasSpecialSyntax, String field) {
+        Assert.assertEquals(value, clause.val);
+        Assert.assertEquals(hasWhitespace, clause.hasWhitespace);
+        Assert.assertEquals(hasSpecialSyntax, clause.hasSpecialSyntax);
+        Assert.assertEquals(field, clause.field);
+    }
+
+    private static void assertClause(ExtendedDismaxQParser.Clause clause, String value, boolean hasWhitespace,
+                                     boolean hasSpecialSyntax) {
+        assertClause(clause, value, hasWhitespace, hasSpecialSyntax, null);
 
     }
-  
-  /**
+
+    /**
    * SOLR-3589: Edismax parser does not honor mm parameter if analyzer splits a token
    */
   public void testCJK() throws Exception {
