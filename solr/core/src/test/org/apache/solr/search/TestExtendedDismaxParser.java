@@ -18,6 +18,7 @@ package org.apache.solr.search;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
@@ -39,6 +40,7 @@ import org.apache.solr.common.params.SolrParams;
 import org.apache.solr.common.util.Utils;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.util.SolrPluginUtils;
+import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -966,8 +968,6 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
 
     @Test
     public void testWhitespaceCharacters() throws Exception {
-        // create a document that contains all reserved characters
-
         assertU(adoc("id", "whitespaceChars",
                 "cat_s", "foo\nfoo"));
         assertU(commit());
@@ -997,8 +997,6 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
 
     @Test
     public void testDoubleQuoteCharacters() throws Exception {
-        // create a document that contains all reserved characters
-
         assertU(adoc("id", "doubleQuote",
                 "cat_s", "foo\"foo"));
         assertU(commit());
@@ -1022,9 +1020,6 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
                         "qf", "name",
                         "defType", "edismax")
                 , "*[count(//doc)=1]");
-
-
-
     }
 
   /**
@@ -1074,6 +1069,50 @@ public class TestExtendedDismaxParser extends SolrTestCaseJ4 {
         "*[count(//doc)=3]");    
     
   }
+
+
+    /**
+     * Repeating some of test cases as direct calls to splitIntoClauses
+     */
+    @Test
+    public void testSplitIntoClauses() throws Exception {
+        String query = "(\"foo\nfoo\")";
+        SolrQueryRequest request = req("q", query,
+                "qf", "cat_s",
+                "defType", "edismax");
+        ExtendedDismaxQParser parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
+        List<ExtendedDismaxQParser.Clause> clauses = parser.splitIntoClauses(query, false);
+        Assert.assertEquals(3, clauses.size());
+        Assert.assertEquals("\\(", clauses.get(0).val);
+        Assert.assertFalse(clauses.get(0).hasWhitespace);
+        Assert.assertTrue(clauses.get(0).hasSpecialSyntax);
+
+        Assert.assertEquals("foo\nfoo", clauses.get(1).val);
+        Assert.assertTrue(clauses.get(1).hasWhitespace);
+        Assert.assertFalse(clauses.get(1).hasSpecialSyntax);
+
+        Assert.assertEquals("\\)", clauses.get(2).val);
+        Assert.assertFalse(clauses.get(2).hasWhitespace);
+        Assert.assertTrue(clauses.get(2).hasSpecialSyntax);
+
+
+        String allReservedCharacters = "!():^[]{}~*?\"+-\\|&/";
+        // the backslash needs to be manually escaped (the query parser sees the raw backslash as an escape the subsequent
+        // character)
+        query = allReservedCharacters.replace("\\", "\\\\");
+
+        request = req("q", query,
+                "qf", "name",
+                "mm", "100%",
+                "defType", "edismax");
+
+        parser = new ExtendedDismaxQParser(query, null, request.getParams(), request);
+        clauses = parser.splitIntoClauses(query, false);
+        Assert.assertEquals(1, clauses.size());
+        Assert.assertEquals("\\!\\(\\)\\:\\^\\[\\]\\{\\}\\~\\*\\?\\\"\\+\\-\\\\\\|\\&\\/", clauses.get(0).val);
+
+
+    }
   
   /**
    * SOLR-3589: Edismax parser does not honor mm parameter if analyzer splits a token
